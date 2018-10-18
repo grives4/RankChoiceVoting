@@ -19,7 +19,7 @@ import pdb
 import pprint
 
 # File to pull from
-inputFile = "rc_votes.csv"
+inputFile = "rc_votes_1.csv"
 
 # Read in Candidate List and Raw Ballots from CSV File
 def getVotes(seat_count):
@@ -32,6 +32,12 @@ def getVotes(seat_count):
     # Read ballots in to 2d list of integers
     ballots = [list(map(str.strip, row)) for row in fileData]
     ballots = [[int(y) for y in x] for x in ballots]
+
+    # If weights were included, remove them.
+    if candidates[0]['name'].lower() == 'weight':
+        candidates.pop(0)
+        for ballot in ballots:
+            ballot.pop(0)
 
     # Do a quick check of the ballots
     validateBallots(seat_count, ballots)
@@ -54,7 +60,7 @@ def getVotes(seat_count):
     return [candidates, votes]
 
 def validateBallots(seat_count, ballots):
-    
+
     # Validate the data
     ballotRow = 1
     validBallotCounts = [1,3,6,10,15,21]
@@ -84,8 +90,15 @@ def processVotingData(candidates, votes, electionThreshold, seat_count):
     lastWinner = 0
     voteRound = 1
 
-    while winnerNumber < seat_count:
+    for voteRound in range(len(candidates)):
         
+        #If it is the last round, the last person wins.
+        if voteRound == len(candidates)-1 and winnerNumber != seat_count:
+            for candidate in candidates:
+                if candidate['status'] == '':
+                    candidate['status'] = 'Winner. Last Rnd'
+            break
+
         # Tally votes
         for candidate in candidates:
             if candidate['status'] == '':
@@ -100,30 +113,27 @@ def processVotingData(candidates, votes, electionThreshold, seat_count):
 
         if candidates[maxVotes[0]]['tally'] > electionThreshold:
             # There is a winner
-
-            # Note the votes to distribute.
-            totalVotesToDistribute = candidates[maxVotes[0]]['tally'] - electionThreshold
-            amountToDistribute = totalVotesToDistribute / candidates[maxVotes[0]]['tally']
-            candidates[maxVotes[0]]['tally'] = -999
-            candidates[maxVotes[0]]['status'] = 'Winner. Rnd: ' + str(voteRound)
-
             lastWinner = maxVotes[0]
             winnerNumber += 1
-            if winnerNumber == seat_count -1:
-                break
-            
+
+            # Note the votes to distribute.
+            totalVotesToDistribute = candidates[lastWinner]['tally'] - electionThreshold
+            amountToDistribute = totalVotesToDistribute / candidates[lastWinner]['tally']
+            candidates[lastWinner]['prevTally'] = candidates[lastWinner]['tally']
+            candidates[lastWinner]['tally'] = -999
+            candidates[lastWinner]['status'] = 'Winner. Rnd: ' + str(voteRound)
 
             # Loop through the votes
             for i in range(len(votes)):
 
                 # Adjust weights
                 if len(votes[i]) > 1:
-                    if votes[i][1] == candidates[maxVotes[0]]['name']:
+                    if votes[i][1] == candidates[lastWinner]['name']:
                         votes[i][0] = str(round(float(votes[i][0]) * amountToDistribute,5))
 
                 # Remove the person from the votes
                 try:
-                    votes[i].remove(candidates[maxVotes[0]]['name'])
+                    votes[i].remove(candidates[lastWinner]['name'])
                 except:
                     pass
 
@@ -132,15 +142,17 @@ def processVotingData(candidates, votes, electionThreshold, seat_count):
             # Determine lowest tally.
             tallies = [abs(candidate['tally']) for candidate in candidates]
             minVotes = [i for i, x in enumerate(tallies) if x == min(tallies)]
+            lastLoser = minVotes[-1]
 
             # Remove the candidates and note the amount to distribute.
-            candidates[minVotes[-1]]['status'] = 'Removed. Rnd ' + str(voteRound)
-            candidates[minVotes[-1]]['tally'] = -999
+            candidates[lastLoser]['status'] = 'Removed. Rnd ' + str(voteRound)
+            candidates[lastLoser]['prevTally'] = candidates[lastLoser]['tally']
+            candidates[lastLoser]['tally'] = -999
 
             # Remove the person
             for i in range(len(votes)):
                 try:
-                    votes[i].remove(candidates[minVotes[0]]['name'])
+                    votes[i].remove(candidates[lastLoser]['name'])
                 except:
                     pass
         
@@ -157,7 +169,7 @@ def main():
     
     # Get the data
     seat_count = int(input("Number of seats:"))
-    print('===============================================================================================================================')
+    #print('===============================================================================================================================')
     [candidates, votes] = getVotes(seat_count)
     
     ballot_count = len(votes)
