@@ -1,5 +1,6 @@
 # Implementation URL
 # https://blog.opavote.com/2016/11/plain-english-explanation-of-scottish.html
+# http://www.explore-2017.preflib.org/wp-content/uploads/2017/04/paper_16.pdf
 
 # View Video Explanation
 # https://www.fairvote.org/rcv#how_rcv_works (bottom video on "multi-winner")
@@ -25,36 +26,32 @@ def getVotes(seat_count):
 
     fileData = csv.reader(open(inputFile,'rt'))
 
-    # Load candidates in dictionary for tracking.
-    candidates = {}
-    names = []
-    for name in next(fileData):
-        candidates[name] = {'prevTally': 0, 'tally': 0, 'status': ''}
-        names.append(name)
-
+    # Load candidates in list for tracking.
+    candidates = [{'name': name, 'prevTally': 0, 'tally': 0, 'status': ''} for name in next(fileData)]
+    
     # Read ballots in to 2d list of integers
-    ballots = []
-    [ballots.append(list(map(str.strip, row))) for row in fileData]
+    ballots = [list(map(str.strip, row)) for row in fileData]
     ballots = [[int(y) for y in x] for x in ballots]
 
     # Do a quick check of the ballots
     validateBallots(seat_count, ballots)
     
     # Add names and sort names by vote per ballot
+    # First column is the weight of the ballot
     votes = []
+    weights = [1] * len(ballots)
     for ballot in ballots:
-        vote = [''] * seat_count
+        vote = [''] * (seat_count + 1)
+        vote[0] = '1.00000'
         for i in range(len(ballot)):
             if ballot[i] != 0:
-                vote[ballot[i]-1] = names[i]
+                vote[ballot[i]] = candidates[i]['name']
 
         votes.append(vote)
+    
     pprint.pprint(votes)
+    
     return [candidates, votes]
-
-def convertToVoteStack(candidates, ballots):
-    voteStack = []
-
 
 def validateBallots(seat_count, ballots):
     
@@ -69,60 +66,66 @@ def validateBallots(seat_count, ballots):
        
     return 
 
-# Round
-# If candidate reaches:
-#   It is top vote getter
-#   Candidate ahead in previous round if dead tie
-#   Candidate left to right if tie in first round
-#   Surplus votes are calculated
-#   Surplus votes are distributed
-# If no candidate reaches, bottom is eliminated
-#   Winner is determined based on redistribution.
-#   Surplus votes are calculated 
-#   Surplus votes are distributed
+def tallyCandidateVotes(candidateName, votes):
+
+    tally = 0
+    for vote in votes:
+        if len(vote) > 1:
+            if candidateName == vote[1]:
+                tally += float(vote[0])
+
+    return round(tally,5)
 
 def processVotingData(candidates, votes, electionThreshold, seat_count):
 
     # Loop through the rounds
-    roundOne = True
     amountToDistribute = 0
-    winnerNumber = 1
+    winnerNumber = 0
     lastWinner = 0
+    voteRound = 1
+
     while winnerNumber < seat_count:
+        
+        # Tally votes
+        for candidate in candidates:
+            if candidate['status'] == '':
+                candidate['prevTally'] = candidate['tally']
+                candidate['tally'] = tallyCandidateVotes(candidate['name'], votes)
 
-        # Tally first round.
-        if roundOne:
-            for vote in votes:
-                candidates[vote[i]]['tally'] = 1
-            roundOne = False
-
+        pprint.pprint(candidates)
+        
         # Determine if there is a winner.
         tallies = [candidate['tally'] for candidate in candidates]
         maxVotes = [i for i, x in enumerate(tallies) if x == max(tallies)]
 
         if candidates[maxVotes[0]]['tally'] > electionThreshold:
             # There is a winner
-            # Note the votes to distribute and reduce candidate tally by that amount.
+
+            # Note the votes to distribute.
             totalVotesToDistribute = candidates[maxVotes[0]]['tally'] - electionThreshold
             amountToDistribute = totalVotesToDistribute / candidates[maxVotes[0]]['tally']
             candidates[maxVotes[0]]['tally'] = -999
+            candidates[maxVotes[0]]['status'] = 'Winner. Rnd: ' + str(voteRound)
 
-            # Lock the candidate record so that it is ignored in the future.
-            candidates[maxVotes[0]]['status'] = 'Winner Round ' + str(voteRound) + ', #' + str(winnerNumber)
             lastWinner = maxVotes[0]
             winnerNumber += 1
-
-
-            # Note the previous tally
-            for candidate in candidates:
-                candidate['prevTally'] = candidate['tally']
-            # Distribute extra votes
-            for ballot in ballots:
-                if ballot.index(voteRound-1) == lastWinner and candidates[ballot.index(voteRound)]['status'] == "":
-                    candidates[ballot.index(voteRound)]['tally'] += amountToDistribute
+            if winnerNumber == seat_count -1:
+                break
             
 
+            # Loop through the votes
+            for i in range(len(votes)):
 
+                # Adjust weights
+                if len(votes[i]) > 1:
+                    if votes[i][1] == candidates[maxVotes[0]]['name']:
+                        votes[i][0] = str(round(float(votes[i][0]) * amountToDistribute,5))
+
+                # Remove the person from the votes
+                try:
+                    votes[i].remove(candidates[maxVotes[0]]['name'])
+                except:
+                    pass
 
         else:
             # There isn't a winner
@@ -131,20 +134,22 @@ def processVotingData(candidates, votes, electionThreshold, seat_count):
             minVotes = [i for i, x in enumerate(tallies) if x == min(tallies)]
 
             # Remove the candidates and note the amount to distribute.
-            candidates[minVotes[-1]]['status'] = 'Removed in round ' + str(voteRound)
-            amountToDistribute = candidates[minVotes[-1]]['tally']
+            candidates[minVotes[-1]]['status'] = 'Removed. Rnd ' + str(voteRound)
             candidates[minVotes[-1]]['tally'] = -999
 
-            
+            # Remove the person
+            for i in range(len(votes)):
+                try:
+                    votes[i].remove(candidates[minVotes[0]]['name'])
+                except:
+                    pass
         
         print('----------------')
         print("Round: " + str(voteRound))
-        pprint.pprint(candidates)
-        #for candidate in candidates:
-        #    print(candidate['name'] + ' ' + candidate['status'])
-        print('----------------')
+        pprint.pprint(votes)
 
         voteRound += 1
+        
             
     return candidates
 
