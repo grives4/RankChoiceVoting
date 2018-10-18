@@ -12,6 +12,9 @@
 
 # Coded in Python 3.4.3 on Windows 10 PC
 
+#Candidate ahead in previous round if both clear in a dead tie
+#Candidate listed first (left-to-right) in round 1
+
 import csv
 import math
 import sys
@@ -112,7 +115,12 @@ def processVotingData(candidates, votes, electionThreshold, seat_count):
         maxVotes = [i for i, x in enumerate(tallies) if x == max(tallies)]
 
         if candidates[maxVotes[0]]['tally'] > electionThreshold:
-            # There is a winner
+            # There is a winner, let's make sure we have the right one if there is a tie after round 1.
+            if len(maxVotes) > 1 and voteRound > 1:
+                print("Tie in round " + voteRound + " found.")
+                print("Odds were low...this script doesn't deal with this case.")
+                pdb.set_trace()
+
             lastWinner = maxVotes[0]
             winnerNumber += 1
 
